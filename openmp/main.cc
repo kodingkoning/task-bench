@@ -490,6 +490,7 @@ void OpenMPApp::execute_timestep(size_t idx, long t)
         long last_offset = g.offset_at_timestep(t-1);
         long last_width = g.width_at_timestep(t-1);
         for (std::pair<long, long> dep : deps) {
+          // place for the function to dynamically assign the output bytes
           num_args += dep.second - dep.first + 1;
           debug_printf(1, "%d[%d, %d, %d] ", x, num_args, dep.first, dep.second); 
           for (int i = dep.first; i <= dep.second; i++) {
