@@ -24,8 +24,6 @@
 #include <set>
 #include <string>
 #include <math.h>
-#include <vector>
-#include <random>
 
 #include "core.h"
 #include "core_kernel.h"
@@ -64,7 +62,7 @@ void Kernel::execute(long graph_index, long timestep, long point,
     assert(scratch_ptr != NULL);
     assert(scratch_bytes > 0);
     execute_kernel_daxpy(*this, scratch_ptr, scratch_bytes, timestep);
-    break;
+    break;  
   case KernelType::COMPUTE_BOUND:
     execute_kernel_compute(*this);
     break;
@@ -197,7 +195,6 @@ long TaskGraph::width_at_timestep(long timestep) const
     assert(false && "unexpected dependence type");
   };
 }
-
 
 long TaskGraph::max_dependence_sets() const
 {
@@ -580,26 +577,19 @@ void TaskGraph::execute_point(long timestep, long point,
         if (last_offset <= dep && dep < last_offset + last_width) {
           assert(idx < n_inputs);
 
-          //assert(input_bytes[idx] == output_bytes_size[timestep][point]);//output_bytes_per_task);
-	  //printf("input_bytes[%d], %ld / %ld\n",idx, input_bytes[idx],sizeof(std::pair<long,long>));
+          assert(input_bytes[idx] == output_bytes_per_task);
           assert(input_bytes[idx] >= sizeof(std::pair<long, long>));
 
           const std::pair<long, long> *input = reinterpret_cast<const std::pair<long, long> *>(input_ptr[idx]);
-	  //printf("input_ptr[%d]: %s\n", idx, *input_ptr[idx]);
-	  //printf("output_ptr[%d]: %s\n", idx, output_ptr);
-	  //printf("input_bytes[%d]: %ld/%ld\n", idx, input_bytes[idx],sizeof(std::pair<long,long>));
           for (size_t i = 0; i < input_bytes[idx]/sizeof(std::pair<long, long>); ++i) {
-//#ifdef DEBUG_CORE
+#ifdef DEBUG_CORE
             if (input[i].first != timestep - 1 || input[i].second != dep) {
               printf("ERROR: Task Bench detected corrupted value in task (graph %ld timestep %ld point %ld) input %ld\n  At position %lu within the buffer, expected value (timestep %ld point %ld) but got (timestep %ld point %ld)\n",
                      graph_index, timestep, point, idx,
                      i, timestep - 1, dep, input[i].first, input[i].second);
               fflush(stdout);
             }
-//#endif
-	    //printf("input[%d]\n", i);
-	    //printf("timestep-1 %ld input.first %ld\n", timestep-1, input[i].first);
-	    //printf("dep %ld, input.second %ld\n", dep, input[i].second);
+#endif
             assert(input[i].first == timestep - 1);
             assert(input[i].second == dep);
           }
@@ -613,9 +603,7 @@ void TaskGraph::execute_point(long timestep, long point,
   }
 
   // Validate output
-  assert(output_bytes == output_bytes_size[timestep][point]);//output_bytes_per_task);
-  //assert(output_bytes == output_bytes_per_task);
-  //printf("output_bytes: %ld / %ld\n",output_bytes,sizeof(std::pair<long,long>));
+  assert(output_bytes == output_bytes_per_task);
   assert(output_bytes >= sizeof(std::pair<long, long>));
 
   // Generate output
@@ -661,8 +649,7 @@ static TaskGraph default_graph(long graph_index)
   graph.output_bytes_per_task = sizeof(std::pair<long, long>);
   graph.scratch_bytes_per_task = 0;
   graph.nb_fields = 0;
-  //vector<vector<size_t>>* graph.output_bytes;
-
+  
   return graph;
 }
 
@@ -891,7 +878,7 @@ App::App(int argc, char **argv)
       }
       graph.kernel.imbalance = value;
     }
-
+    
     if (!strcmp(argv[i], FIELD_FLAG)) {
       needs_argument(i, argc, FIELD_FLAG);
       int value  = atoi(argv[++i]);
@@ -915,67 +902,7 @@ App::App(int argc, char **argv)
   if (graph.period < 0) {
     graph.period = needs_period(graph.dependence) ? 3 : 0;
   }
-
-  // Dynamic array for output_bytes
-  //vector<vector<size_t>> graph.output_bytes(graph.timesteps);
-  //if(graph.output)
-  graph.output_bytes_size = new size_t*[graph.timesteps];
-  for(int i = 0; i < graph.timesteps; i++)
-    graph.output_bytes_size[i] = new size_t[graph.max_width];
-
-//  graph.output_bytes = new size_t [graph.timesteps][graph.max_width];
-  for (int t = 0; t < graph.timesteps; t++){
-    long width_t = graph.width_at_timestep(graph.timesteps);
-    long offset_t = graph.offset_at_timestep(graph.timesteps);
-    //graph.output_bytes[t] = vector<int>(width_t);
-    if (graph.output_bytes_per_task == 16){
-      for (int i=0; i<width_t; ++i) {
-        graph.output_bytes_size[t][i+offset_t] = 16;
-      }
-    }else{
-      int nrolls=10000;  // number of experiments
-      int nstars=(graph.output_bytes_per_task-16)*width_t/16;    // total number output
-
-      std::default_random_engine generator;
-      float mu = rand() % width_t;
-      float sigma = rand() % (width_t/2);
-
-      std::normal_distribution<double> distribution(mu,sigma);
-      //std::normal_distribution<double> distribution(4.,2.);
-      int p [width_t] = {};
-      //size_t* ibytes = new size_t [number_task];
-      //static size_t ibytes[number_task]={};
-
-      for (int i=0; i<nrolls; ++i) {
-        double number = distribution(generator);
-        if ((number>=0)&&(number<width_t)) ++p[int(number)];
-      }
-
-     // std::cout << "normal_distribution (5.0,2.0):" << std::endl;
-      //printf("test p[5]: %d",p[5]);
-      //printf("nstars: %d",nstars);
-      int iroll=0;
-      //int inumber;
-      for (int i=0; i<width_t; ++i) {
-        //std::cout << i << "-" << (i+1) << ": ";
-        if(i == width_t -1 ) {
-          graph.output_bytes_size[t][i+offset_t]=((nstars-iroll+1)*16);
-        	//graph.output_bytes_size[t][i+offset_t]=0.5*((nstars-iroll)+graph.output_bytes_size[t][offset_t]);//output_bytes-36;//0.5*((nstars-iroll)+ibytes[0]);
-        	//graph.output_bytes_size[t][i+offset_t]=graph.output_bytes_per_task-32;//0.5*((nstars-iroll)+ibytes[0]);
-    	//graph.output_bytes_size[t][0+offset_t]= graph.output_bytes_size[t][i+offset_t];
-        }else{
-        	graph.output_bytes_size[t][i+offset_t]=((p[i]*nstars/nrolls)+1)*16;//output_bytes+6;//(p[i]*nstars/nrolls);
-        	//graph.output_bytes_size[t][i+offset_t]=graph.output_bytes_per_task+16;//(p[i]*nstars/nrolls);
-    	     iroll = iroll+(graph.output_bytes_size[t][i+offset_t]-16)/16;
-        }
-        //std::cout << std::string(inumber,'*') << std::endl;
-        printf("\ntest i:%d, start:%ld\n",i, graph.output_bytes_size[t][i+offset_t]);
-      }
-    }
-
-  }
-
-
+  
   graphs.push_back(graph);
 
   // check nb_fields, if not set by user, set it to timesteps
@@ -985,7 +912,7 @@ App::App(int argc, char **argv)
       g.nb_fields = g.timesteps;
     }
   }
-
+  
   check();
 }
 
@@ -1135,13 +1062,13 @@ long long count_flops_per_task(const TaskGraph &g, long timestep, long point)
   case KernelType::BUSY_WAIT:
   case KernelType::MEMORY_BOUND:
     return 0;
-
+    
   case KernelType::COMPUTE_DGEMM:
   {
-    long N = sqrt(g.scratch_bytes_per_task / (3 * sizeof(double)));
+    long N = sqrt(g.scratch_bytes_per_task / (3 * sizeof(double))); 
     return 2 * N * N * N * g.kernel.iterations;
   }
-
+  
   case KernelType::MEMORY_DAXPY:
     return 0;
 
@@ -1227,46 +1154,6 @@ static std::tuple<long, long> clamp(long start, long end, long min_value, long m
     return std::tuple<long, long>(std::max(start, min_value), std::min(end, max_value));
   }
 }
-
-/* size_t* TaskGraph::allocate_bytes(size_t output_bytes, int number_task)
-{
-  const int nrolls=10000;  // number of experiments
-  int nstars=output_bytes*number_task;    // total number output
-
-  std::default_random_engine generator;
-  float mu = 1. + rand() % number_task;
-  float sigma = (1 + rand() % number_task)/2.;
-
-  std::normal_distribution<double> distribution(mu,sigma);
-  //std::normal_distribution<double> distribution(4.,2.);
-  int p [number_task] = {};
-  size_t* ibytes = new size_t [number_task];
-  //static size_t ibytes[number_task]={};
-
-  for (int i=0; i<nrolls; ++i) {
-    double number = distribution(generator);
-    if ((number>=0)&&(number<number_task)) ++p[int(number)];
-  }
-
- // std::cout << "normal_distribution (5.0,2.0):" << std::endl;
-  //printf("test p[5]: %d",p[5]);
-  int iroll=0;
-  //int inumber;
-  for (int i=0; i<number_task; ++i) {
-    //std::cout << i << "-" << (i+1) << ": ";
-    if(i == number_task-1 or i == 0) {
-    	//ibytes[i]=output_bytes-36;//0.5*((nstars-iroll)+ibytes[0]);
-      ibytes[i] = 0.5*((nstars-iroll)+ibytes[0]);
-	//ibytes[0]= ibytes[i];
-    }else{
-    	ibytes[i]=p[i]*nstars/nrolls);//=output_bytes+6;//(p[i]*nstars/nrolls);
-	    iroll = iroll+ibytes[i];
-    }
-    //std::cout << std::string(inumber,'*') << std::endl;
-    printf("\ntest i:%d, start:%ld\n",i, ibytes[i]);
-  }
-  return ibytes;
-} */
 
 void App::report_timing(double elapsed_seconds) const
 {
