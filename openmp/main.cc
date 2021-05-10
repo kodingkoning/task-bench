@@ -532,6 +532,17 @@ void OpenMPApp::execute_timestep(size_t idx, long t)
 
 void OpenMPApp::insert_task(task_args_t *args, int num_args, payload_t payload, size_t graph_id, size_t task_bytes)
 {
+	/*
+
+  if(t > nb_fields){
+    for (int tt = t/nb_fields*nb_fields; tt < t/nb_fields*nb_fields+2; tt++){
+    	for (int w = 0; w < g.max_width; w++){
+	mat.data[g.max_width*tt+w].output_buff = (char*)malloc(sizeof(char)*g.output_bytes_size[tt][w]);
+	//printf("allocate output bytes ind %d t %d w %d size %ld\n", matrix[i].N*t+w,t, w, graph.output_bytes_size[t][w]);
+	}
+    }
+  }
+	*/
   tile_t *mat = matrix[graph_id].data;
   int x0 = args[0].x;
   int y0 = args[0].y;

@@ -28,6 +28,8 @@ int main(int argc, char *argv[])
   MPI_Comm_size(MPI_COMM_WORLD, &n_ranks);
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
+  printf("n_ranks, rank: %d / %d\n",n_ranks,rank);
+
   App app(argc, argv);
   if (rank == 0) app.display();
 
@@ -108,13 +110,13 @@ int main(int argc, char *argv[])
         point_input_bytes.resize(max_deps);
 
         for (long dep = 0; dep < max_deps; ++dep) {
-          point_inputs[dep].resize(graph.output_bytes_per_task);
+          point_inputs[dep].resize(graph.output_bytes_size[rank][point]);//graph.output_bytes_per_task);
           point_input_ptr[dep] = point_inputs[dep].data();
           point_input_bytes[dep] = point_inputs[dep].size();
         }
 
         auto &point_outputs = outputs[point_index];
-        point_outputs.resize(graph.output_bytes_per_task);
+        point_outputs.resize(graph.output_bytes_size[rank][point]);
       }
 
       // Cache dependencies.
@@ -205,14 +207,37 @@ int main(int argc, char *argv[])
 
         MPI_Waitall(requests.size(), requests.data(), MPI_STATUSES_IGNORE);
 
+        long max_deps = 0;
+        for (long dset = 0; dset < graph.max_dependence_sets(); ++dset) {
+          for (long point = first_point; point <= last_point; ++point) {
+            long deps = 0;
+            for (auto interval : graph.dependencies(dset, point)) {
+              deps += interval.second - interval.first + 1;
+            }
+            max_deps = std::max(max_deps, deps);
+          }
+        }
         #pragma omp parallel for schedule(runtime)
         for (long point = std::max(first_point, offset); point <= std::min(last_point, offset + width - 1); ++point) {
           long point_index = point - first_point;
 
+          auto &point_input = inputs[point_index];
           auto &point_input_ptr = input_ptr[point_index];
           auto &point_input_bytes = input_bytes[point_index];
           auto &point_n_inputs = n_inputs[point_index];
           auto &point_output = outputs[point_index];
+
+          point_input.resize(max_deps);
+          point_input_ptr.resize(max_deps);
+          point_input_bytes.resize(max_deps);
+
+          for (long dep = 0; dep < max_deps; ++dep) {
+            point_input[dep].resize(graph.output_bytes_size[0][point]);//graph.output_bytes_per_task);
+            point_input_ptr[dep] = point_input[dep].data();
+            point_input_bytes[dep] = point_input[dep].size();
+          }
+
+          point_output.resize(graph.output_bytes_size[0][point]);
 
           graph.execute_point(timestep, point,
                               point_output.data(), point_output.size(),
