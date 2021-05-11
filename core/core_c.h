@@ -85,8 +85,14 @@ typedef struct task_graph_t {
   size_t scratch_bytes_per_task;
   int nb_fields;
   size_t** output_bytes_size;
+  int output_case;
+  float onormal_mu;
+  float onormal_std;
+  float ogamma_alpha;
+  float ogamma_beta;
 } task_graph_t;
 
+long task_graph_allocate_bytes(task_graph_t graph, int output_case);
 long task_graph_offset_at_timestep(task_graph_t graph, long timestep);
 long task_graph_width_at_timestep(task_graph_t graph, long timestep);
 long task_graph_max_dependence_sets(task_graph_t graph);
