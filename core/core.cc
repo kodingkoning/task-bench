@@ -987,6 +987,14 @@ App::App(int argc, char **argv)
   for(int i = 0; i < graph.timesteps; i++)
     graph.output_bytes_size[i] = new size_t[graph.max_width];
 
+  allocate_bytes(graph);
+
+  for(int t = 0; t< graph.timesteps; t++){
+    for(int i = 0; i< graph.max_width; i++){
+      printf("t %d i %d; outputsize: %ld\n",t, i, graph.output_bytes_size[t][i]);
+    }
+  }
+
 
 
   graphs.push_back(graph);
@@ -1241,97 +1249,84 @@ static std::tuple<long, long> clamp(long start, long end, long min_value, long m
   }
 }
 
-void Taskgraph::allocate_bytes(int output_case){
-  if (output_bytes_per_task == 16){
-    for (int t = 0; t < timesteps; t++){
-      long width_t = width_at_timestep(timesteps);
-      long offset_t = offset_at_timestep(timesteps);
+void allocate_bytes(TaskGraph&g){
+  std::default_random_engine generator;
+  if (g.output_bytes_per_task == 16){
+    for (int t = 0; t < g.timesteps; t++){
+      long width_t = g.width_at_timestep(t);
+      long offset_t = g.offset_at_timestep(t);
       for (int i=0; i<width_t; ++i) {
-        output_bytes_size[t][i+offset_t] = 16;
+        g.output_bytes_size[t][i+offset_t] = 16;
       }
     }
-  }
-  int nstars=(output_bytes_per_task-16)*width_t/16;    // total number output
-  int nrolls=10000;  // number of experiments
-  int p [width_t] = {};
-  switch (output_case) {
-    case 0:
+  }else{
+
+  for (int t = 0; t < g.timesteps; t++){
+    long width_t = g.width_at_timestep(t);
+    long offset_t = g.offset_at_timestep(t);
+    int nstars=(g.output_bytes_per_task-16)*width_t/16;    // total number output
+    int nrolls=10000;  // number of experiment
+    int p [width_t] = {};
+    float mu,sigma;
+    if(g.output_case==0){
       //case 0: uniform case (follow output_bytes_per_task)
-      for (int t = 0; t < timesteps; t++){
-        long width_t = width_at_timestep(timesteps);
-        long offset_t = offset_at_timestep(timesteps);
         for (int i=0; i<width_t; ++i) {
-          output_bytes_size[t][i+offset_t] = output_bytes_per_task;
+          g.output_bytes_size[t][i+offset_t] = g.output_bytes_per_task;
         }
-      }
-      break;
-    case 1:
+    }else if (g.output_case==1){
       //case 1: normal distribution with fixed mu and sigma
-      std::default_random_engine generator;
-      float mu = onormal_mu;
-      float sigma = onormal_std;
+      //float mu = onormal_mu;
+      //float sigma = onormal_std;
+        mu = g.onormal_mu;
+        sigma = g.onormal_std;
 
-      std::normal_distribution<double> distribution(mu,sigma);
-      int p [width_t] = {};
+        std::normal_distribution<double> distribution(mu,sigma);
+        //int p [width_t] = {};
 
-      for (int i=0; i<nrolls; ++i) {
-        double number = distribution(generator);
-        if ((number>=0)&&(number<width_t)) ++p[int(number)];
-      }
-      break;
-    case 2:
+        for (int i=0; i<nrolls; ++i) {
+          double number = distribution(generator);
+          if ((number>=0)&&(number<width_t)) ++p[int(number)];
+        }
+
+    }else if (g.output_case==2){
     //case 2: normal distribution with non fixed mu and sigma
+        mu = rand() % width_t;
+        sigma = rand() % (width_t);
+        std::normal_distribution<double> distribution(mu,sigma);
+        //int p [width_t] = {};
 
-    std::default_random_engine generator;
-    float mu = rand()/width_t;
-    float sigma = rand()/width_t;
+        for (int i=0; i<nrolls; ++i) {
+          double number = distribution(generator);
+          if ((number>=0)&&(number<width_t)) ++p[int(number)];
+        }
+    }else if (g.output_case==3){
+          float alpha = 2;
+          float beta = 2;
 
-    std::normal_distribution<double> distribution(mu,sigma);
-    int p [width_t] = {};
+        std::gamma_distribution<double> distribution(alpha,beta);
+        //int p [width_t] = {};
 
-    for (int i=0; i<nrolls; ++i) {
-      double number = distribution(generator);
-      if ((number>=0)&&(number<width_t)) ++p[int(number)];
+        for (int i=0; i<nrolls; ++i) {
+          double number = distribution(generator);
+          if ((number>=0)&&(number<width_t)) ++p[int(number)];
+        }
     }
-    break;
-    case 3:
-    //case 3 gamma distribution
-    std::default_random_engine generator;
-    float alpha = 2;
-    float beta = 2;
 
-     std::gamma_distribution<double> distribution(alpha,gamma);
-    int p [width_t] = {};
-
-    for (int i=0; i<nrolls; ++i) {
-      double number = distribution(generator);
-      if ((number>=0)&&(number<width_t)) ++p[int(number)];
-    }
-    break;
-    default:
-    for (int t = 0; t < timesteps; t++){
-      long width_t = width_at_timestep(timesteps);
-      long offset_t = offset_at_timestep(timesteps);
-      for (int i=0; i<width_t; ++i) {
-        output_bytes_size[t][i+offset_t] = output_bytes_per_task;
-      }
-    }
-    break;
-  }
-
-    if(output_case>0){
+    if(g.output_case>0){
       int iroll=0;
       for (int i=0; i<width_t; ++i) {
-        output_bytes_size[t][i+offset_t]=((p[i]*nstars/nrolls)+1)*16;
-        iroll = iroll+(output_bytes_size[t][i+offset_t]-16)/16;
+        g.output_bytes_size[t][i+offset_t]=((p[i]*nstars/nrolls)+1)*16;
+        iroll = iroll+(g.output_bytes_size[t][i+offset_t]-16)/16;
       }
       for (int i=0; i<width_t; ++i) {
-        size_t old_output = output_bytes_size[t][i+offset_t];
-        output_bytes_size[t][i+offset_t]=output_bytes_size[t][i+offset_t]+((p[i]*(nstars-iroll)/nrolls))*16;
-        iroll = iroll+(output_bytes_size[t][i+offset_t]-old_output)/16;
+        size_t old_output = g.output_bytes_size[t][i+offset_t];
+        g.output_bytes_size[t][i+offset_t]=g.output_bytes_size[t][i+offset_t]+((p[i]*(nstars-iroll)/nrolls))*16;
+        iroll = iroll+(g.output_bytes_size[t][i+offset_t]-old_output)/16;
       }
-      output_bytes_size[t][width-1+offset_t]=output_bytes_size[t][width-1+offset_t]+((nstars-iroll)*16);
+      g.output_bytes_size[t][width_t-1+offset_t]=g.output_bytes_size[t][width_t-1+offset_t]+((nstars-iroll)*16);
     }
+  }
+}
 }
 
 void App::report_timing(double elapsed_seconds) const
