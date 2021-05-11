@@ -931,7 +931,7 @@ App::App(int argc, char **argv)
     if (!strcmp(argv[i], ONORMAL_MEAN_FLAG)) {
       needs_argument(i, argc, ONORMAL_MEAN_FLAG);
       int value  = atoi(argv[++i]);
-      if (value > 0) {
+      if (value < 0) {
         fprintf(stderr, "error: Invalid flag \"" ONORMAL_MEAN_FLAG " %d\" must be > 0\n", value);
         abort();
       }
@@ -941,7 +941,7 @@ App::App(int argc, char **argv)
     if (!strcmp(argv[i], ONORMAL_STD_FLAG)) {
       needs_argument(i, argc, ONORMAL_STD_FLAG);
       int value  = atoi(argv[++i]);
-      if (value > 0) {
+      if (value < 0) {
         fprintf(stderr, "error: Invalid flag \"" ONORMAL_STD_FLAG " %d\" must be > 0\n", value);
         abort();
       }
@@ -951,7 +951,7 @@ App::App(int argc, char **argv)
     if (!strcmp(argv[i], OGAMMA_ALPHA_FLAG)) {
       needs_argument(i, argc, OGAMMA_ALPHA_FLAG);
       int value  = atoi(argv[++i]);
-      if (value > 0) {
+      if (value < 0) {
         fprintf(stderr, "error: Invalid flag \"" OGAMMA_ALPHA_FLAG " %d\" must be > 0\n", value);
         abort();
       }
@@ -961,7 +961,7 @@ App::App(int argc, char **argv)
     if (!strcmp(argv[i], OGAMMA_BETA_FLAG)) {
       needs_argument(i, argc, OGAMMA_BETA_FLAG);
       int value  = atoi(argv[++i]);
-      if (value > 0) {
+      if (value < 0) {
         fprintf(stderr, "error: Invalid flag \"" OGAMMA_BETA_FLAG " %d\" must be > 0\n", value);
         abort();
       }
