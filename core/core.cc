@@ -613,7 +613,7 @@ void TaskGraph::execute_point(long timestep, long point,
   }
 
   // Validate output
-  printf("my/model: %ld/%ld\n", output_bytes, output_bytes_size[timestep][point]);
+  //printf("my/model: %ld/%ld\n", output_bytes, output_bytes_size[timestep][point]);
   //assert(output_bytes == output_bytes_size[timestep][point]);//output_bytes_per_task);
   //assert(output_bytes == output_bytes_per_task);
   //printf("output_bytes: %ld / %ld\n",output_bytes,sizeof(std::pair<long,long>));
@@ -989,11 +989,11 @@ App::App(int argc, char **argv)
 
   allocate_bytes(graph);
 
-  for(int t = 0; t< graph.timesteps; t++){
+  /*for(int t = 0; t< graph.timesteps; t++){
     for(int i = 0; i< graph.max_width; i++){
       printf("t %d i %d; outputsize: %ld\n",t, i, graph.output_bytes_size[t][i]);
     }
-  }
+  }*/
 
 
 

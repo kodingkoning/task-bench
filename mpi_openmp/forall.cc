@@ -193,13 +193,13 @@ int main(int argc, char *argv[])
                   point_inputs[point_n_inputs].resize(graph.output_bytes_size[timestep-1][dep]);
                   point_input_ptr[point_n_inputs] = point_inputs[point_n_inputs].data();
                   point_input_bytes[point_n_inputs] = point_inputs[point_n_inputs].size();
-                  printf("point_n_inputs %d size %ld", point_n_inputs, point_input_bytes[point_n_inputs]);
+                  //printf("point_n_inputs %d size %ld", point_n_inputs, point_input_bytes[point_n_inputs]);
                   //std::cout<<"check share memory"<<output.begin()<<output.end()<<std::endl;
                 } else {
                   int from = tag_bits_by_point[dep];
                   int to = tag_bits_by_point[point];
                   int tag = (from << 8) | to;
-                  printf("dep %d, MPIrecv %d size %ld, rank %d", dep, point_n_inputs, point_inputs[point_n_inputs].size(),rank_by_point[dep]);
+                  //printf("dep %d, MPIrecv %d size %ld, rank %d", dep, point_n_inputs, point_inputs[point_n_inputs].size(),rank_by_point[dep]);
                   MPI_Request req;
                   MPI_Irecv(point_inputs[point_n_inputs].data(),
                             point_inputs[point_n_inputs].size(), MPI_BYTE,
@@ -223,7 +223,7 @@ int main(int argc, char *argv[])
                 int to = tag_bits_by_point[dep];
                 int tag = (from << 8) | to;
                 MPI_Request req;
-                printf("dep %d, MPIsend size %ld, rank %d", point, point_output.size(),rank_by_point[dep]);
+                //printf("dep %d, MPIsend size %ld, rank %d", point, point_output.size(),rank_by_point[dep]);
                 MPI_Isend(point_output.data(), point_output.size(), MPI_BYTE,
                           rank_by_point[dep], tag, MPI_COMM_WORLD, &req);
                 requests.push_back(req);
@@ -246,9 +246,9 @@ int main(int argc, char *argv[])
           size_t output_point_bytes = graph.output_bytes_size[timestep][point];
 
           point_output.resize(output_point_bytes);
-          int point_i_dep = 0;
+          //int point_i_dep = 0;
 
-          printf("execute point: t %d, point %d, outputsize %ld\n",timestep, point,point_output.size());
+          /*printf("execute point: t %d, point %d, outputsize %ld\n",timestep, point,point_output.size());
           //std::cout<<point_input_bytes.data()<<std::endl;
           if(timestep == 0){
             //point_input[point_n_dep].resize(graph.output_bytes_size[timestep][point]);
@@ -269,7 +269,7 @@ int main(int argc, char *argv[])
                 point_i_dep++;
               }
 
-          }
+          }*/
           graph.execute_point(timestep, point,
                               point_output.data(), point_output.size(),
                               point_input_ptr.data(), point_input_bytes.data(), point_n_inputs,
