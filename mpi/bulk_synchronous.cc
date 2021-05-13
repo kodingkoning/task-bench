@@ -101,13 +101,13 @@ int main(int argc, char *argv[])
         point_input_bytes.resize(max_deps);
 
         for (long dep = 0; dep < max_deps; ++dep) {
-          point_inputs[dep].resize(graph.output_bytes_per_task);
+          point_inputs[dep].resize(graph.output_bytes_size[0][point]);
           point_input_ptr[dep] = point_inputs[dep].data();
           point_input_bytes[dep] = point_inputs[dep].size();
         }
 
         auto &point_outputs = outputs[point_index];
-        point_outputs.resize(graph.output_bytes_per_task);
+        point_outputs.resize(graph.output_bytes_size[0][point]);
       }
 
       // Cache dependencies.
@@ -144,6 +144,8 @@ int main(int argc, char *argv[])
           auto &point_inputs = inputs[point_index];
           auto &point_n_inputs = n_inputs[point_index];
           auto &point_output = outputs[point_index];
+          auto &point_input_ptr = input_ptr[point_index];
+          auto &point_input_bytes = input_bytes[point_index];
 
           auto &point_deps = deps[point_index];
           auto &point_rev_deps = rev_deps[point_index];
@@ -161,6 +163,9 @@ int main(int argc, char *argv[])
                 if (first_point <= dep && dep <= last_point) {
                   auto &output = outputs[dep - first_point];
                   point_inputs[point_n_inputs].assign(output.begin(), output.end());
+                  point_inputs[point_n_inputs].resize(graph.output_bytes_size[timestep-1][dep]);
+                  point_input_ptr[point_n_inputs] = point_inputs[point_n_inputs].data();
+                  point_input_bytes[point_n_inputs] = point_inputs[point_n_inputs].size();
                 } else {
                   int from = tag_bits_by_point[dep];
                   int to = tag_bits_by_point[point];
@@ -207,6 +212,8 @@ int main(int argc, char *argv[])
           auto &point_input_bytes = input_bytes[point_index];
           auto &point_n_inputs = n_inputs[point_index];
           auto &point_output = outputs[point_index];
+          size_t output_point_bytes = graph.output_bytes_size[timestep][point];
+          point_output.resize(output_point_bytes);
 
           graph.execute_point(timestep, point,
                               point_output.data(), point_output.size(),

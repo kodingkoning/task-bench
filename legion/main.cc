@@ -507,6 +507,8 @@ LegionApp::LegionApp(Runtime *runtime, Context ctx)
 
   for (auto g : graphs) {
     // Space of tasks
+    vector<FieldID>* fid_array;
+    std::vector<int> dest(std::begin(g.output_bytes_size[0]), std::end(g.output_bytes_size[0]));
     IndexSpaceT<1> ts = runtime->create_index_space(ctx, Rect<1>(0, g.max_width - 1));
 
     // Space of task output
@@ -516,9 +518,10 @@ LegionApp::LegionApp(Runtime *runtime, Context ctx)
     {
       FieldAllocator allocator =
         runtime->create_field_allocator(ctx, fs);
-      for (long i = 0; i < num_fields; ++i) {
-        allocator.allocate_field(sizeof(char), FID_FIRST+i);
-      }
+      //for (long i = 0; i < num_fields; ++i) {
+      allocator.allocate_fields(g.output_bytes_size[0],fid_array);
+        //allocator.allocate_field(sizeof(char), FID_FIRST+i);
+      //}
     }
     LogicalRegionT<1> result_lr = runtime->create_logical_region(ctx, is, fs);
 
@@ -576,9 +579,10 @@ LegionApp::LegionApp(Runtime *runtime, Context ctx)
       IndexFillLauncher launcher(ts, primary_lp, result_lr,
                                  TaskArgument(&zero, sizeof(zero)),
                                  0 /* default projection */);
-      for (long i = 0; i < num_fields; ++i) {
-        launcher.add_field(FID_FIRST+i);
-      }
+      launcher.add_fields(fid_array);
+      //for (long i = 0; i < num_fields; ++i) {
+      //  launcher.add_field(FID_FIRST+i);
+      //}
       runtime->fill_fields(ctx, launcher);
     }
 

@@ -24,6 +24,8 @@
 #include <set>
 #include <string>
 #include <math.h>
+#include <vector>
+#include <random>
 
 #include "core.h"
 #include "core_kernel.h"
@@ -62,7 +64,7 @@ void Kernel::execute(long graph_index, long timestep, long point,
     assert(scratch_ptr != NULL);
     assert(scratch_bytes > 0);
     execute_kernel_daxpy(*this, scratch_ptr, scratch_bytes, timestep);
-    break;  
+    break;
   case KernelType::COMPUTE_BOUND:
     execute_kernel_compute(*this);
     break;
@@ -221,6 +223,7 @@ long TaskGraph::width_at_timestep(long timestep) const
     assert(false && "unexpected dependence type");
   };
 }
+
 
 long TaskGraph::max_dependence_sets() const
 {
@@ -603,19 +606,26 @@ void TaskGraph::execute_point(long timestep, long point,
         if (last_offset <= dep && dep < last_offset + last_width) {
           assert(idx < n_inputs);
 
-          assert(input_bytes[idx] == output_bytes_per_task);
+          //assert(input_bytes[idx] == output_bytes_size[timestep][point]);//output_bytes_per_task);
+	  //printf("input_bytes[%d], %ld / %ld\n",idx, input_bytes[idx],sizeof(std::pair<long,long>));
           assert(input_bytes[idx] >= sizeof(std::pair<long, long>));
 
           const std::pair<long, long> *input = reinterpret_cast<const std::pair<long, long> *>(input_ptr[idx]);
+	  //printf("input_ptr[%d]: %s\n", idx, *input_ptr[idx]);
+	  //printf("output_ptr[%d]: %s\n", idx, output_ptr);
+	  //printf("input_bytes[%d]: %ld/%ld\n", idx, input_bytes[idx],sizeof(std::pair<long,long>));
           for (size_t i = 0; i < input_bytes[idx]/sizeof(std::pair<long, long>); ++i) {
-#ifdef DEBUG_CORE
+//#ifdef DEBUG_CORE
             if (input[i].first != timestep - 1 || input[i].second != dep) {
               printf("ERROR: Task Bench detected corrupted value in task (graph %ld timestep %ld point %ld) input %ld\n  At position %lu within the buffer, expected value (timestep %ld point %ld) but got (timestep %ld point %ld)\n",
                      graph_index, timestep, point, idx,
                      i, timestep - 1, dep, input[i].first, input[i].second);
               fflush(stdout);
             }
-#endif
+//#endif
+	    //printf("input[%d]\n", i);
+	    //printf("timestep-1 %ld input.first %ld\n", timestep-1, input[i].first);
+	    //printf("dep %ld, input.second %ld\n", dep, input[i].second);
             assert(input[i].first == timestep - 1);
             assert(input[i].second == dep);
           }
@@ -629,7 +639,10 @@ void TaskGraph::execute_point(long timestep, long point,
   }
 
   // Validate output
-  assert(output_bytes == output_bytes_per_task);
+  //printf("my/model: %ld/%ld\n", output_bytes, output_bytes_size[timestep][point]);
+  //assert(output_bytes == output_bytes_size[timestep][point]);//output_bytes_per_task);
+  //assert(output_bytes == output_bytes_per_task);
+  //printf("output_bytes: %ld / %ld\n",output_bytes,sizeof(std::pair<long,long>));
   assert(output_bytes >= sizeof(std::pair<long, long>));
 
   // Generate output
@@ -670,12 +683,18 @@ static TaskGraph default_graph(long graph_index)
   graph.dependence = DependenceType::TRIVIAL;
   graph.radix = 3;
   graph.period = -1;
+  graph.output_case=0;
   graph.fraction_connected = 0.25;
   graph.kernel = {KernelType::EMPTY, 0, 16, 0.0};
   graph.output_bytes_per_task = sizeof(std::pair<long, long>);
   graph.scratch_bytes_per_task = 0;
   graph.nb_fields = 0;
-  
+  graph.onormal_mu = 2;
+  graph.onormal_std = 2;
+  graph.ogamma_alpha = 2;
+  graph.ogamma_beta = 2;
+  //vector<vector<size_t>>* graph.output_bytes;
+
   return graph;
 }
 
@@ -712,6 +731,16 @@ static void needs_argument(int i, int argc, const char *flag) {
 #define NODES_FLAG "-nodes"
 #define SKIP_GRAPH_VALIDATION_FLAG "-skip-graph-validation"
 #define FIELD_FLAG "-field"
+
+#define ODIST_FLAG "-output-dist"
+#define ONORMAL_MEAN_FLAG "-output-mean"
+#define ONORMAL_STD_FLAG "-output-std"
+#define ONORMAL_RANDOM_FLAG "-output-random"
+#define OUNIFORM_FLAG "-output-uniform"
+#define OGAMMA_ALPHA_FLAG "-output-gamma-a"
+#define OGAMMA_BETA_FLAG "-output-gamma-b"
+#define OCASE_FLAG "-output-case"
+
 
 static void show_help_message(int argc, char **argv) {
   printf("%s: A Task Benchmark\n", argc > 0 ? argv[0] : "task_bench");
@@ -947,7 +976,6 @@ App::App(int argc, char **argv)
       graph.kernel.fraction_mem = value;
     }
 
-
     if (!strcmp(argv[i], FIELD_FLAG)) {
       needs_argument(i, argc, FIELD_FLAG);
       int value  = atoi(argv[++i]);
@@ -956,6 +984,56 @@ App::App(int argc, char **argv)
         abort();
       }
       graph.nb_fields = value;
+    }
+
+    if (!strcmp(argv[i], OCASE_FLAG)) {
+      needs_argument(i, argc, OCASE_FLAG);
+      int value  = atoi(argv[++i]);
+      if (value < 0) {
+        fprintf(stderr, "error: Invalid flag \"" OCASE_FLAG " %d\" must be >= 0\n", value);
+        abort();
+      }
+      graph.output_case = value;
+    }
+
+    if (!strcmp(argv[i], ONORMAL_MEAN_FLAG)) {
+      needs_argument(i, argc, ONORMAL_MEAN_FLAG);
+      int value  = atoi(argv[++i]);
+      if (value < 0) {
+        fprintf(stderr, "error: Invalid flag \"" ONORMAL_MEAN_FLAG " %d\" must be > 0\n", value);
+        abort();
+      }
+      graph.onormal_mu = value;
+    }
+
+    if (!strcmp(argv[i], ONORMAL_STD_FLAG)) {
+      needs_argument(i, argc, ONORMAL_STD_FLAG);
+      int value  = atoi(argv[++i]);
+      if (value < 0) {
+        fprintf(stderr, "error: Invalid flag \"" ONORMAL_STD_FLAG " %d\" must be > 0\n", value);
+        abort();
+      }
+      graph.onormal_std = value;
+    }
+
+    if (!strcmp(argv[i], OGAMMA_ALPHA_FLAG)) {
+      needs_argument(i, argc, OGAMMA_ALPHA_FLAG);
+      int value  = atoi(argv[++i]);
+      if (value < 0) {
+        fprintf(stderr, "error: Invalid flag \"" OGAMMA_ALPHA_FLAG " %d\" must be > 0\n", value);
+        abort();
+      }
+      graph.ogamma_alpha = value;
+    }
+
+    if (!strcmp(argv[i], OGAMMA_BETA_FLAG)) {
+      needs_argument(i, argc, OGAMMA_BETA_FLAG);
+      int value  = atoi(argv[++i]);
+      if (value < 0) {
+        fprintf(stderr, "error: Invalid flag \"" OGAMMA_BETA_FLAG " %d\" must be > 0\n", value);
+        abort();
+      }
+      graph.ogamma_beta = value;
     }
 
     if (!strcmp(argv[i], AND_FLAG)) {
@@ -1031,7 +1109,22 @@ App::App(int argc, char **argv)
   if (graph.period < 0) {
     graph.period = needs_period(graph.dependence) ? 3 : 0;
   }
-  
+
+  // Dynamic array for output_bytes
+  graph.output_bytes_size = new size_t*[graph.timesteps];
+  for(int i = 0; i < graph.timesteps; i++)
+    graph.output_bytes_size[i] = new size_t[graph.max_width];
+
+  allocate_bytes(graph);
+
+  /*for(int t = 0; t< graph.timesteps; t++){
+    for(int i = 0; i< graph.max_width; i++){
+      printf("t %d i %d; outputsize: %ld\n",t, i, graph.output_bytes_size[t][i]);
+    }
+  }*/
+
+
+
   graphs.push_back(graph);
 
   // check nb_fields, if not set by user, set it to timesteps
@@ -1041,7 +1134,7 @@ App::App(int argc, char **argv)
       g.nb_fields = g.timesteps;
     }
   }
-  
+
   check();
 }
 
@@ -1191,13 +1284,13 @@ long long count_flops_per_task(const TaskGraph &g, long timestep, long point)
   case KernelType::BUSY_WAIT:
   case KernelType::MEMORY_BOUND:
     return 0;
-    
+
   case KernelType::COMPUTE_DGEMM:
   {
-    long N = sqrt(g.scratch_bytes_per_task / (3 * sizeof(double))); 
+    long N = sqrt(g.scratch_bytes_per_task / (3 * sizeof(double)));
     return 2 * N * N * N * g.kernel.iterations;
   }
-  
+
   case KernelType::MEMORY_DAXPY:
     return 0;
 
@@ -1296,6 +1389,86 @@ static std::tuple<long, long> clamp(long start, long end, long min_value, long m
   } else {
     return std::tuple<long, long>(std::max(start, min_value), std::min(end, max_value));
   }
+}
+
+void allocate_bytes(TaskGraph&g){
+  std::default_random_engine generator;
+  if (g.output_bytes_per_task == 16){
+    for (int t = 0; t < g.timesteps; t++){
+      long width_t = g.width_at_timestep(t);
+      long offset_t = g.offset_at_timestep(t);
+      for (int i=0; i<width_t; ++i) {
+        g.output_bytes_size[t][i+offset_t] = 16;
+      }
+    }
+  }else{
+
+  for (int t = 0; t < g.timesteps; t++){
+    long width_t = g.width_at_timestep(t);
+    long offset_t = g.offset_at_timestep(t);
+    int nstars=(g.output_bytes_per_task-16)*width_t/16;    // total number output
+    int nrolls=10000;  // number of experiment
+    int p [width_t] = {};
+    float mu,sigma;
+    if(g.output_case==0){
+      //case 0: uniform case (follow output_bytes_per_task)
+        for (int i=0; i<width_t; ++i) {
+          g.output_bytes_size[t][i+offset_t] = g.output_bytes_per_task;
+        }
+    }else if (g.output_case==1){
+      //case 1: normal distribution with fixed mu and sigma
+      //float mu = onormal_mu;
+      //float sigma = onormal_std;
+        mu = g.onormal_mu;
+        sigma = g.onormal_std;
+
+        std::normal_distribution<double> distribution(mu,sigma);
+        //int p [width_t] = {};
+
+        for (int i=0; i<nrolls; ++i) {
+          double number = distribution(generator);
+          if ((number>=0)&&(number<width_t)) ++p[int(number)];
+        }
+
+    }else if (g.output_case==2){
+    //case 2: normal distribution with non fixed mu and sigma
+        mu = rand() % width_t;
+        sigma = rand() % (width_t);
+        std::normal_distribution<double> distribution(mu,sigma);
+        //int p [width_t] = {};
+
+        for (int i=0; i<nrolls; ++i) {
+          double number = distribution(generator);
+          if ((number>=0)&&(number<width_t)) ++p[int(number)];
+        }
+    }else if (g.output_case==3){
+          float alpha = 2;
+          float beta = 2;
+
+        std::gamma_distribution<double> distribution(alpha,beta);
+        //int p [width_t] = {};
+
+        for (int i=0; i<nrolls; ++i) {
+          double number = distribution(generator);
+          if ((number>=0)&&(number<width_t)) ++p[int(number)];
+        }
+    }
+
+    if(g.output_case>0){
+      int iroll=0;
+      for (int i=0; i<width_t; ++i) {
+        g.output_bytes_size[t][i+offset_t]=((p[i]*nstars/nrolls)+1)*16;
+        iroll = iroll+(g.output_bytes_size[t][i+offset_t]-16)/16;
+      }
+      for (int i=0; i<width_t; ++i) {
+        size_t old_output = g.output_bytes_size[t][i+offset_t];
+        g.output_bytes_size[t][i+offset_t]=g.output_bytes_size[t][i+offset_t]+((p[i]*(nstars-iroll)/nrolls))*16;
+        iroll = iroll+(g.output_bytes_size[t][i+offset_t]-old_output)/16;
+      }
+      g.output_bytes_size[t][width_t-1+offset_t]=g.output_bytes_size[t][width_t-1+offset_t]+((nstars-iroll)*16);
+    }
+  }
+}
 }
 
 void App::report_timing(double elapsed_seconds) const

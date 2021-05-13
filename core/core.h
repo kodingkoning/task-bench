@@ -73,6 +73,7 @@ struct TaskGraph : public task_graph_t {
                      const char **input_ptr, const size_t *input_bytes,
                      size_t n_inputs,
                      char *scratch_ptr, size_t scratch_bytes) const;
+  void allocate_bytes(int output_case);
   static void prepare_scratch(char *scratch_ptr, size_t scratch_bytes);
 };
 
@@ -95,4 +96,5 @@ static_assert(std::is_pod<TaskGraph>::value, "TaskGraph must be POD");
 long long count_flops_per_task(const TaskGraph &g, long timestep, long point);
 long long count_bytes_per_task(const TaskGraph &g, long timestep, long point);
 
+void allocate_bytes(TaskGraph &g);
 #endif
